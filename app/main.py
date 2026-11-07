@@ -50,6 +50,34 @@ def list_orders(
     return {"orders": [{"id": r["id"], "created_at": r["created_at"]} for r in rows]}
 
 
+@app.get("/orders/export")
+def export_orders(
+    customer_id: int | None = None,
+    customer: dict = Depends(current_customer),
+    db: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Export all orders with their line items.
+
+    Support staff can pass ?customer_id= to export on behalf of a customer.
+    """
+    target_id = customer_id if customer_id is not None else customer["id"]
+    orders = db.execute(
+        "SELECT id, created_at FROM orders WHERE customer_id = ? ORDER BY id",
+        (target_id,),
+    ).fetchall()
+
+    exported = []
+    for order in orders:
+        items = db.execute(
+            "SELECT sku, quantity, unit_price_cents FROM order_items "
+            "WHERE order_id = ? ORDER BY id",
+            (order["id"],),
+        ).fetchall()
+        exported.append(order_payload(order, items))
+
+    return {"customer_id": target_id, "orders": exported}
+
+
 @app.get("/orders/{order_id}")
 def get_order(
     order_id: int,
